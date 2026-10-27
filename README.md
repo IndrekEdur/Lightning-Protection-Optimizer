@@ -39,7 +39,7 @@ Tests include analytical cone boundaries, exhaustive enumeration versus MILP, in
 
 ## Limits
 
-- The original demo uses a flat rectangular roof. Rolling Sphere supports additional solid meshes/equipment; no IFC loading/export yet. Optional future IFC dependency is in requirements-ifc.txt.
+- The original demo uses a flat rectangular roof. Rolling Sphere supports additional solid meshes/equipment; IFC loading is available; no IFC export yet. Install IFC dependencies with requirements-ifc.txt.
 - Cost optimization solves set cover with one rod per candidate location. A 15-second HiGHS limit is reported; optimal status applies only to the candidate and sample grids. A refined check can find gaps and does not silently certify a solution.
 - Rolling Sphere certificates cover continuous modeled surfaces, including physical edges/corners. A budget-limited proof returns undetermined. Synthetic angle results remain point-sampled.
 - Dense grids have explicit memory/work limits. Grid spacing is a maximum; boundaries are always included.
@@ -50,7 +50,7 @@ See ARCHITECTURE.md and ROADMAP.md. No GitHub repository was created; remote acc
 
 ## Rolling Sphere workflow
 
-Select **Rolling Sphere Method**, LPS I/II/III/IV (20/30/45/60 m), then cost/count/manual objective. Add equipment boxes and assign protected/obstacle/air_terminal/excluded roles. Project JSON accepts closed triangulated `meshes`, so roof levels, slopes, parapets and explicitly included neighbouring solids participate in collisions. IFC loading was not present and remains a separate phase.
+Select **Rolling Sphere Method**, LPS I/II/III/IV (20/30/45/60 m), then cost/count/manual objective. Add equipment boxes and assign protected/obstacle/air_terminal/excluded roles. Project JSON accepts closed triangulated `meshes`, so roof levels, slopes, parapets and explicitly included neighbouring solids participate in collisions. IFC loading is now implemented; see WINDOWS_IFC.md for its review workflow and limits.
 
 Select mounting surfaces: upward-facing faces of chosen equipment/meshes generate candidates at actual base elevations. `min_mount_normal_z` defaults to 0.5 (maximum 60 degree mounting slope) and can be changed in project JSON. Permitted/prohibited rectangles apply in world XY within the project footprint. Floating rods or rods crossing solids are rejected. Manual rods use `base_z` for other elevations.
 
@@ -105,3 +105,9 @@ Optional browser verification (running backend/Vite plus system Chromium):
 See ARCHITECTURE.md and ROADMAP.md for proof boundaries and future IFC work.
 
 Browser workflow verified in Chromium: project import, cost/count comparison, continuous geometry status, sphere inspection, Excel and PDF downloads; zero JavaScript runtime errors. Screenshot: `artifacts/rolling-sphere-verified.png`.
+
+## Windows / IFC testing
+
+See [WINDOWS_IFC.md](WINDOWS_IFC.md) for setup/start/test PowerShell scripts, private `test_models/` storage and IFC geometry interpretation. Install `requirements-ifc.txt` for import support. Import IFC2x3/IFC4 from the left panel; review roles, omitted/invalid elements and ground/reference elevation before accepting protection. Original placement coordinates and source-unit/CRS metadata are retained; viewer recentering is display-only. IFC calculations use imported meshes and never the rectangular demonstration roof.
+
+Current validation: 63 backend tests pass, frontend build succeeds and the synthetic IFC Chromium workflow passes. Tests exercise real IfcOpenShell geometry parsing but **no actual client BIM file or Windows host was available**. Real-building engineering validation and Windows execution remain pending.

@@ -52,3 +52,44 @@ def export_report(format: str, request: ExportRequest):
         raise HTTPException(status_code=422,detail=str(exc)) from exc
     mime='application/pdf' if format=='pdf' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     return Response(data,media_type=mime,headers={'Content-Disposition':f'attachment; filename="lightning-protection-report.{format}"'})
+
+
+from fastapi import UploadFile, File
+
+@app.post('/api/ifc/import')
+def upload_ifc(file: UploadFile = File(...)):
+    from .ifc_import import import_ifc, MAX_FILE_BYTES
+    from pathlib import Path
+    import tempfile
+    import os
+    if not file.filename or Path(file.filename).suffix.lower()!='.ifc':
+        raise HTTPException(status_code=422,detail='Select an uncompressed IFC STEP (.ifc) file')
+    path=None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.ifc',delete=False) as target:
+            path=target.name;size=0
+            while chunk:=file.file.read(1024*1024):
+                size+=len(chunk)
+                if size>MAX_FILE_BYTES:raise HTTPException(status_code=413,detail='IFC upload exceeds 100 MiB; export a relevant subset')
+                target.write(chunk)
+        return import_ifc(path,filename=file.filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=422,detail=str(exc)) from exc
+    finally:
+        if path is not None:os.unlink(path)
+        file.file.close()
+
+class MountingRequest(Project):
+    surface: str | None = None
+
+@app.post('/api/rod/mountings')
+def rod_mountings(request: MountingRequest):
+    from .mounting import mounting_positions
+    from .rolling_sphere import Scene
+    try:
+        project=request.model_copy(update={'candidate_surfaces':[request.surface]}) if request.surface else request
+        positions=mounting_positions(project,Scene(project,[]))
+        if not positions:raise ValueError('No permitted mountings on the selected surfaces')
+        if len(positions)>5000:raise ValueError('More than 5000 mountings; increase candidate spacing')
+        return {'positions':positions,'units':'m'}
+    except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from exc

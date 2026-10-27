@@ -15,7 +15,10 @@ def grid(width, depth, spacing):
     return np.array(np.meshgrid(x,y)).reshape(2,-1).T
 
 def allowed(points, p):
-    mask = ((points[:,0]>=0)&(points[:,0]<=p.width)&(points[:,1]>=0)&(points[:,1]<=p.depth))
+    if p.geometry_source=='ifc':
+        mask=np.ones(len(points),dtype=bool)
+    else:
+        mask = ((points[:,0]>=0)&(points[:,0]<=p.width)&(points[:,1]>=0)&(points[:,1]<=p.depth))
     if p.permitted:
         mask &= np.logical_or.reduce([in_rect(points,r) for r in p.permitted])
     for r in p.prohibited:

@@ -3,3 +3,10 @@ node_modules/
 dist/
 __pycache__/
 .pytest_cache/
+
+# Private BIM inputs and derived project exports
+test_models/
+*.ifc
+*.IFC
+*.ifczip
+*.ifcxml

@@ -9,6 +9,7 @@ def solve(p):
     if p.method == "rolling_sphere":
         from .sphere_optimizer import solve_sphere
         return solve_sphere(p)
+    if p.geometry_source=='ifc':raise ValueError('IFC geometry requires Rolling Sphere Method; synthetic angle demo only supports the parametric roof')
     require_method(p)
     pts=samples(p)
     if len(pts)==0:

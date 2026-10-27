@@ -22,11 +22,29 @@ class Rod(FiniteModel):
     y: float
     type_index: int = Field(ge=0)
 
+class IfcMetadata(FiniteModel):
+    filename: str
+    schema_name: str
+    source_sha256: str
+    length_unit_scale_to_m: float
+    source_units: list[dict] = Field(default_factory=list)
+    coordinate_reference: str = 'IFC placement/world coordinates in metres; map conversion retained as metadata'
+    map_conversions: list[dict] = Field(default_factory=list)
+    bounds_m: list[list[float]]
+    diagnostics: dict = Field(default_factory=dict)
+    failures: list[dict] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
 class MeshObject(FiniteModel):
     name: str
     role: Literal['protected','obstacle','air_terminal','excluded'] = 'protected'
-    vertices: list[tuple[float,float,float]] = Field(max_length=10000)
-    faces: list[tuple[int,int,int]] = Field(max_length=20000)
+    ifc_guid: str | None = None
+    ifc_class: str | None = None
+    ifc_name: str | None = None
+    source_unit_scale_to_m: float | None = None
+    import_diagnostics: dict = Field(default_factory=dict)
+    vertices: list[tuple[float,float,float]] = Field(max_length=100000)
+    faces: list[tuple[int,int,int]] = Field(max_length=200000)
 
 class Equipment(FiniteModel):
     name: str = 'Ventilation'
@@ -40,8 +58,13 @@ class Equipment(FiniteModel):
 
 class Project(FiniteModel):
     model_config = {"allow_inf_nan": False}
+    geometry_source: Literal['parametric','ifc'] = 'parametric'
+    ifc_metadata: IfcMetadata | None = None
+    reference_surface_confirmed: bool = False
+    ifc_review_confirmed: bool = False
+    acknowledged_ifc_omissions: list[str] = Field(default_factory=list)
     units: Literal['m'] = 'm'
-    meshes: list[MeshObject] = Field(default_factory=list, max_length=20)
+    meshes: list[MeshObject] = Field(default_factory=list, max_length=1000)
     equipment: list[Equipment] = Field(default_factory=list, max_length=30)
     min_mount_normal_z: float = Field(default=0.5, gt=0, le=1)
     candidate_surfaces: list[str] = Field(default_factory=lambda: ['Roof'], max_length=50)

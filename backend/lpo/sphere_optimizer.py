@@ -17,6 +17,7 @@ def verify_complete(p,rods,seconds=12,depth=7):
     try:
         scene=Scene(p,rods)
         result=certificate(scene,seconds=seconds,max_depth=depth)
+        result['diagnostics']=scene.diagnostics
     except ValueError as exc:
         return {'status':'invalid_model','error':str(exc),'points':[],'patches':[],'surface_certified':False}
     # Independent scalar target/direction evaluation, not MILP cut matrices or
@@ -25,10 +26,16 @@ def verify_complete(p,rods,seconds=12,depth=7):
     if result['status']=='protected':
         independent=verify_scene(p,rods,refine=2,depth=min(3,p.sphere_refinement+1))
         result['independent_check']={k:v for k,v in independent.items() if k not in ('points',)}
+        if independent.get('limit'):
+            result['status']='undetermined';result['surface_certified']=False;result['limit']=independent['limit']
         contacts=[pt for pt in independent['points'] if pt['status']=='unprotected']
         if contacts or independent['status']=='invalid_model':
             result['status']='unprotected' if contacts else 'invalid_model';result['surface_certified']=False
             result['points'].extend(contacts)
+            if independent['status']=='invalid_model':result['error']=independent.get('error','Independent geometry check failed')
+    if p.geometry_source=='ifc' and result['status']=='protected' and not (p.reference_surface_confirmed and p.ifc_review_confirmed):
+        result['status']='undetermined';result['surface_certified']=False
+        result['limit']='Confirm ground/reference elevation and review required IFC surfaces before accepting a protection certificate'
     return result
 
 
@@ -44,14 +51,16 @@ def solve_sphere(p, _refined=False):
     if p.objective=='manual':
         verification=verify_complete(p,rods,seconds=30,depth=8)
         return package(p,rods,verification,status,start,0,None)
-    positions=mounting_positions(p,Scene(p,[]));k=len(p.catalogue)
+    base_scene=Scene(p,[])
+    positions=mounting_positions(p,base_scene);k=len(p.catalogue)
     if not len(positions):raise ValueError('No permitted candidate positions')
     if len(positions)*k>1500:raise ValueError('At most 1500 candidate/type combinations; increase spacing')
     options=[]
     for x,y,z in positions:
         for t in range(k):
             rod=Rod(x=float(x),y=float(y),base_z=float(z),type_index=t)
-            try:Scene(p,[rod])
+            try:
+                starts,ends=rods_segments(p,[rod]);base_scene.check_mounting(starts[0],ends[0])
             except ValueError:continue
             options.append(rod)
     if not options:raise ValueError('No feasible rod mountings on candidate grid')
@@ -130,6 +139,7 @@ def solve_sphere(p, _refined=False):
     verification=verify_complete(p,rods,seconds=20,depth=8)
     result=package(p,rods,verification,status,start,iterations,gap)
     result['objective_lower_bound_on_witness_model']=lower_bound
+    if p.geometry_source=='ifc':result['checks'].append('Imported IFC: confirm units, ground/reference elevation, element classification, omitted elements and mesh self-intersections; map conversion is metadata only.')
     result['candidate_count']=len(keys);result['checks'].extend(notes)
     if best is None and not _refined and p.spacing>1 and len(options)<350 and time.perf_counter()-start<40:
         finer=p.model_copy(update={'spacing':max(1,p.spacing/2)})
@@ -148,4 +158,4 @@ def package(p,rods,verification,status,start,iterations,gap):
         'method':'rolling_sphere','lps':p.lps,'radius':SPHERE_RADII[p.lps],'duration_seconds':time.perf_counter()-start,'optimization_method':'witness-cut MILP + continuous surface certificate + independent point/direction check','cut_iterations':iterations,
         'best_verified_feasible':{'rods':placement,'total_cost':sum(p.catalogue[r.type_index].price for r in rods),'scope':'Static sphere-contact exclusion on the modeled required surfaces within stated tolerances'} if certified else None,
         'protected_samples':sum(pt['status']=='protected' for pt in points),'unprotected_samples':sum(pt['status']=='unprotected' for pt in points),'undetermined_samples':sum(pt['status']=='undetermined' for pt in points),'samples':[],
-        'checks':['Protected means continuously verified modeled geometry, not edition-wide IEC/EN compliance.','Finite candidate grid and bounded search: best certified solution found; no continuous-placement global optimality.','Static sphere-center exclusion is conservative; trapped contact centers can leave a model undetermined.','Closed externally validated solid meshes in metres; zero-radius vertical rods; infinite horizontal ground.','Bonding, down conductors, separation distances, structural checks and standard-edition applicability require engineering review.']+([verification['error']] if 'error' in verification else [])}
+        'checks':['Protected means continuously verified modeled geometry, not edition-wide IEC/EN compliance.','Finite candidate grid and bounded search: best certified solution found; no continuous-placement global optimality.','Static sphere-center exclusion is conservative; trapped contact centers can leave a model undetermined.','Closed externally validated solid meshes in metres; zero-radius vertical rods; infinite horizontal ground.','Bonding, down conductors, separation distances, structural checks and standard-edition applicability require engineering review.']+([verification['error']] if 'error' in verification else [])+([verification['limit']] if 'limit' in verification else [])+(['Imported IFC: classification, reference elevation and tessellation assumptions must be reviewed; source CRS conversion is retained as metadata.'] if p.geometry_source=='ifc' else [])}

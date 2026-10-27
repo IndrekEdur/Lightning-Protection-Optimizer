@@ -86,9 +86,8 @@ def certificate(scene, max_depth=7, max_nodes=80000, seconds=30):
         except Exception:return directions
         return [np.array([axis,normals[a],normals[b]]) for a,b in zip(order,np.roll(order,-1))]
 
-    roof=scene.objects[0][2]
     # Respect protection rectangles by constructing the requested top plane.
-    rects=scene.p.protected or [None]
+    rects=(scene.p.protected or [None]) if scene.p.geometry_source=='parametric' else []
     for rect in rects:
         x0=max(0,rect.x) if rect else 0;y0=max(0,rect.y) if rect else 0
         x1=min(scene.p.width,rect.x+rect.width) if rect else scene.p.width
@@ -109,16 +108,20 @@ def certificate(scene, max_depth=7, max_nodes=80000, seconds=30):
                 features.append(('Roof',v,[np.array([[0.,0.,1.],side])]))
         for v in verts:
             if v[0] in (0,scene.p.width) and v[1] in (0,scene.p.depth):features.append(('Roof',v[None],[np.array([[0.,0.,1.],[-1. if v[0]==0 else 1.,0.,0.],[0.,-1. if v[1]==0 else 1.,0.]])]))
-    for name,role,m in scene.objects[1:]:
+    for name,role,m in (scene.objects[1:] if scene.p.geometry_source=='parametric' else scene.objects):
         if role!='protected':continue
         for face,normal in zip(m.triangles,m.face_normals):target_faces.append((name,face,normal))
         for pair,edge,convex in zip(m.face_adjacency,m.face_adjacency_edges,m.face_adjacency_convex):
             if np.dot(m.face_normals[pair[0]],m.face_normals[pair[1]])<1-1e-10:
                 features.append((name,m.vertices[edge],[m.face_normals[pair]] if convex else directions))
+        incident_faces=[[] for _ in m.vertices]
+        for fi,face in enumerate(m.faces):
+            for vi in face:incident_faces[vi].append(fi)
+        local_convex=np.ones(len(m.vertices),dtype=bool)
+        for edge,convex in zip(m.face_adjacency_edges,m.face_adjacency_convex):
+            if not convex:local_convex[edge]=False
         for vi,v in enumerate(m.vertices):
-            incident=np.any(m.faces==vi,axis=1)
-            adjacent=np.any(m.face_adjacency_edges==vi,axis=1)
-            domain=normal_domains(m.face_normals[incident]) if np.all(m.face_adjacency_convex[adjacent]) else directions
+            domain=normal_domains(m.face_normals[incident_faces[vi]]) if local_convex[vi] else directions
             features.append((name,v[None],domain))
     if not target_faces:
         return {'status':'invalid_model','error':'No required protection surfaces','surface_certified':False,'patches':[],'points':[]}
@@ -130,6 +133,9 @@ def certificate(scene, max_depth=7, max_nodes=80000, seconds=30):
     # subdivision; other solids may also rigorously block centers.
     stack=[(name,tri,n,0) for name,tri,n in target_faces]
     while stack:
+        if limit():
+            unresolved.extend({'object':n,'vertices':t.tolist(),'status':'undetermined','kind':'face_interior'} for n,t,_,_ in stack)
+            stack=[];break
         name,tri,normal,level=stack.pop();nodes+=1
         centers=tri+R*normal
         d=segment_distances(centers,scene.a,scene.b)
