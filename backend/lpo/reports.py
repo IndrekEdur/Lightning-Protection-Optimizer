@@ -31,6 +31,8 @@ def check_token(project,result):
 def facts(p,r):
     verification=r.get('verification',{})
     ifc_facts=[('IFC source',p.ifc_metadata.filename),('IFC schema',p.ifc_metadata.schema_name),('IFC import height range (m)',f'{p.ifc_metadata.height_min_m} .. {p.ifc_metadata.height_max_m} (whole intersecting elements)'),('Source unit to metre',p.ifc_metadata.length_unit_scale_to_m),('IFC source SHA256',p.ifc_metadata.source_sha256),('Coordinate reference',p.ifc_metadata.coordinate_reference),('Ground reference confirmed',str(p.reference_surface_confirmed)),('IFC classifications reviewed',str(p.ifc_review_confirmed)),('Excluded missing IFC elements',', '.join(p.acknowledged_ifc_omissions)),('IFC tessellation/diagnostics',json.dumps(p.ifc_metadata.diagnostics))] if p.ifc_metadata else []
+    for source in p.ifc_sources:
+        ifc_facts.extend([(f'IFC file {source.source_id}',source.filename),('Source schema',source.schema_name),('Source unit scale to metre',source.length_unit_scale_to_m),('Source height range (m)',f'{source.height_min_m} .. {source.height_max_m}'),('Source original SHA256',source.source_sha256),('Source CRS conversions',json.dumps(source.map_conversions))])
     return ifc_facts+[('Project',p.name),('Method',r.get('method',p.method)),('LPS',p.lps),('Sphere radius (m)',r.get('radius','n/a')),('Standard edition',p.edition),('Units',p.units),('Geometry status',r.get('verification_status','demo only')),('Continuous geometry certificate',str(r.get('geometry_verified',False))),('IEC/EN compliance established','No'),('Ground reference (m)',p.ground_z),('Geometry tolerance (m)',p.sphere_tolerance),('Sample spacing (m)',p.sample_spacing),('Surface certificate max depth',verification.get('max_depth','n/a')),('Certificate nodes',verification.get('nodes','n/a')),('Certificate unresolved patches',verification.get('unresolved_patches','n/a')),('Certificate proof',verification.get('proof','n/a')),('Rod candidate spacing (m)',p.spacing),('Mounting surfaces',', '.join(p.candidate_surfaces)),('Mount slope normal z minimum',p.min_mount_normal_z),('Objective',p.objective),('Solver status',r['solver_status']),('MILP gap (witness model)',r.get('mip_gap')),('Search method',r.get('optimization_method','finite grid synthetic set cover')),('Total rod cost',r['total_cost']),('Rod count',len(r['rods'])),('Duration (seconds)',r.get('duration_seconds','n/a'))]
 
 
@@ -42,6 +44,8 @@ def xlsx(p,r):
     from openpyxl import Workbook
     book=Workbook();summary=book.active;summary.title='Calculation'
     for row in facts(p,r):summary.append(row)
+    sources=book.create_sheet('IFC sources');sources.append(['Source ID','File','Schema','Scale to m','Height min m','Height max m','Original SHA256'])
+    for source in p.ifc_sources:sources.append([source.source_id,source.filename,source.schema_name,source.length_unit_scale_to_m,source.height_min_m,source.height_max_m,source.source_sha256])
     rods=book.create_sheet('Rods');rods.append(['ID','Type','x (m)','y (m)','Base z (m)','Height (m)','Price'])
     for row in schedule(p,r):rods.append(row)
     objects=book.create_sheet('Object status');objects.append(['Object','Status'])

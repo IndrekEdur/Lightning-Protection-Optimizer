@@ -1,6 +1,6 @@
 import {useState} from 'react';
 export type Equipment={name:string;x:number;y:number;z:number;width:number;depth:number;height:number;role:string};
-export type MeshObject={ifc_guid?:string;ifc_class?:string;ifc_name?:string;import_diagnostics?:{geometry_errors:string[]};name:string;role:string;vertices:number[][];faces:number[][]};
+export type MeshObject={ifc_source_id?:string;ifc_guid?:string;ifc_class?:string;ifc_name?:string;import_diagnostics?:{geometry_errors:string[]};name:string;role:string;vertices:number[][];faces:number[][]};
 export type PointResult={object:string;point:number[];status:string;witness:{center:number[]}|null};
 export type Inspection={clearance:number;admissible:boolean;escape_verified:boolean;contacts:{object:string;point:number[]|null}[]};
 export const radii:Record<string,number>={I:20,II:30,III:45,IV:60};

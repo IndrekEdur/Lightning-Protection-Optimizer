@@ -98,3 +98,25 @@ def rod_mountings(request: MountingRequest):
         if len(positions)>5000:raise ValueError('More than 5000 mountings; increase candidate spacing')
         return {'positions':positions,'units':'m'}
     except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from exc
+
+
+class IfcMergeRequest(BaseModel):
+    project: Project
+    incoming: Project
+    replace_source_id: str | None = None
+
+@app.post('/api/ifc/merge')
+def merge_ifc(request: IfcMergeRequest):
+    from .ifc_federation import merge
+    try:return merge(request.project,request.incoming,request.replace_source_id)
+    except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from exc
+
+class IfcRemoveRequest(BaseModel):
+    project: Project
+    source_id: str
+
+@app.post('/api/ifc/remove')
+def remove_ifc(request: IfcRemoveRequest):
+    from .ifc_federation import remove
+    try:return remove(request.project,request.source_id)
+    except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from exc

@@ -125,3 +125,18 @@ CLI equivalent:
 ```
 
 Validation of this addition: 75 backend tests pass; frontend production build passes. Tests cover metre/millimetre units, open/equal/inverted bounds, empty selection, sloped world geometry and filtering before retained-mesh budgets. Chromium tests exercise same-file reimport and preservation of the previous model after a failed height selection.
+
+
+## Federated architecture / ventilation / other IFC models
+
+The IFC file chooser accepts **multiple files** (Ctrl/Shift selection), or add them one at a time. Default operation **Add model(s) to project** keeps the existing IFC geometry. Each file retains its own filename, original hash, schema, source unit assignments, SI scale, CRS, height range, diagnostics and missing elements. All meshes participate in the same 3D viewer and complete-system Rolling Sphere calculation.
+
+Height inputs apply to newly selected files. For different discipline ranges, import architecture first, change the range and add the ventilation file separately. To change an already loaded file, choose **Replace** in Import operation or use its **Replace / change height range** button, set the bounds and re-import one file. Identical source/file additions are rejected, so changing a height range cannot silently duplicate an existing source. **Remove IFC file** removes only that source and its mounting selections.
+
+Models stay in their original SI placement coordinate frame; the application does not guess survey alignment or apply per-file CRS map conversions. Confirm overlap and elevation in the viewer before engineering review. Repeated IFC GUIDs in different files are source-namespaced and are never automatically deduplicated; review overlapping physical geometry. Reported verified area sums modeled surfaces rather than computing their geometric union.
+
+A selected-file batch is applied only after every import and merge succeeds; a failed second/third file leaves the previous project unchanged. Project edits during import prevent stale results from overwriting newer changes. Adding/replacing/removing models invalidates results and resets review confirmations. Existing prices, project settings, ground elevation and rods are preserved when extending an IFC project; rods must be recalculated and may become invalid if their mounting geometry was removed.
+
+Save/Open project JSON retains all sources and source-to-element mapping. XLSX includes an IFC sources sheet; PDF/JSON reports identify original files and their per-source unit/filter provenance. Missing-geometry exclusion acknowledgments are scoped to the source file, preventing one discipline's acknowledgment from suppressing another's failure with the same GUID.
+
+Combined preview budgets remain **1000 meshes / 250000 triangles**, at most 20 IFC files; the calculation's existing 30000 included-triangle limit is unchanged. Multiple-file support is not a large-model performance upgrade. All original BIM files and derived multi-model projects still belong in ignored `test_models/`.

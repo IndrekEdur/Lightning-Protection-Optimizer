@@ -26,3 +26,6 @@ Still pending: validation with actual client IFC building models (none supplied 
 
 
 Delivered height-range import: SI world-Z minimum/maximum, inclusive whole-element selection, same-file reimport, excluded-element diagnostics, failed-import preservation, camera/origin reset, streaming source hash and configurable larger uploads. Future performance work: provably conservative pre-tessellation bounds, background jobs/progress and cancellation. Current filtering still tessellates each represented element before deciding inclusion.
+
+
+Delivered federated IFC import: multiple-file or incremental additions; source-specific units, height filters and diagnostics; explicit source replacement/removal; source-scoped GUIDs and omission acknowledgments; combined geometry calculations; atomic import batches; per-file reports and project persistence. Survey/CRS alignment remains explicit upstream work, not automatic federation. Combined model/calculation limits remain unchanged.
