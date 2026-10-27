@@ -24,6 +24,8 @@ class Rod(FiniteModel):
 
 class IfcMetadata(FiniteModel):
     filename: str
+    height_min_m: float | None = None
+    height_max_m: float | None = None
     schema_name: str
     source_sha256: str
     length_unit_scale_to_m: float

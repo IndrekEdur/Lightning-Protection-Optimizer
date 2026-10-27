@@ -8,11 +8,13 @@ from lpo.ifc_import import import_ifc
 from lpo.optimization import solve
 parser=argparse.ArgumentParser()
 parser.add_argument('file',type=Path)
+parser.add_argument('--height-min',type=float,help='Minimum absolute IFC world Z in metres')
+parser.add_argument('--height-max',type=float,help='Maximum absolute IFC world Z in metres')
 parser.add_argument('--verify',action='store_true',help='Run manual/no-rod rolling sphere verification, not placement optimization')
 parser.add_argument('--save-project',type=Path,help='Write sensitive derived geometry JSON; use test_models/')
 args=parser.parse_args()
 try:
-    project=import_ifc(args.file)
+    project=import_ifc(args.file,height_min_m=args.height_min,height_max_m=args.height_max)
     if args.save_project:args.save_project.write_text(project.model_dump_json(indent=2),encoding='utf-8')
     summary=project.ifc_metadata.model_dump()
     if args.verify:

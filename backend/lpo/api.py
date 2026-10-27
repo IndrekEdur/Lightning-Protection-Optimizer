@@ -54,25 +54,30 @@ def export_report(format: str, request: ExportRequest):
     return Response(data,media_type=mime,headers={'Content-Disposition':f'attachment; filename="lightning-protection-report.{format}"'})
 
 
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Form
 
 @app.post('/api/ifc/import')
-def upload_ifc(file: UploadFile = File(...)):
+def upload_ifc(file: UploadFile = File(...), height_min_m: float | None = Form(None), height_max_m: float | None = Form(None)):
     from .ifc_import import import_ifc, MAX_FILE_BYTES
     from pathlib import Path
     import tempfile
     import os
     if not file.filename or Path(file.filename).suffix.lower()!='.ifc':
+        file.file.close()
         raise HTTPException(status_code=422,detail='Select an uncompressed IFC STEP (.ifc) file')
+    import math
+    if any(v is not None and not math.isfinite(v) for v in (height_min_m,height_max_m)) or (height_min_m is not None and height_max_m is not None and height_min_m>height_max_m):
+        file.file.close()
+        raise HTTPException(status_code=422,detail='Enter finite heights with minimum not greater than maximum')
     path=None
     try:
         with tempfile.NamedTemporaryFile(suffix='.ifc',delete=False) as target:
             path=target.name;size=0
             while chunk:=file.file.read(1024*1024):
                 size+=len(chunk)
-                if size>MAX_FILE_BYTES:raise HTTPException(status_code=413,detail='IFC upload exceeds 100 MiB; export a relevant subset')
+                if size>MAX_FILE_BYTES:raise HTTPException(status_code=413,detail=f'IFC upload exceeds {MAX_FILE_BYTES//(1024*1024)} MiB; configure LPO_IFC_MAX_UPLOAD_MIB or use a subset')
                 target.write(chunk)
-        return import_ifc(path,filename=file.filename)
+        return import_ifc(path,filename=file.filename,height_min_m=height_min_m,height_max_m=height_max_m)
     except ValueError as exc:
         raise HTTPException(status_code=422,detail=str(exc)) from exc
     finally:

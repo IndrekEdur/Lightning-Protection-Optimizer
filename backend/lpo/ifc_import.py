@@ -7,11 +7,12 @@ Original file bytes and source unit metadata remain unchanged.
 from pathlib import Path
 import hashlib
 import time
+import os
 import numpy as np
 import trimesh
 from .models import Project,MeshObject,IfcMetadata
 
-MAX_FILE_BYTES=100*1024*1024
+MAX_FILE_BYTES=int(os.environ.get('LPO_IFC_MAX_UPLOAD_MIB','512'))*1024*1024
 MAX_TRIANGLES=250000
 
 
@@ -30,14 +31,17 @@ def role_for(element):
     return 'obstacle','building'
 
 
-def import_ifc(path, filename=None):
+def import_ifc(path, filename=None, height_min_m=None, height_max_m=None):
     try:
         import ifcopenshell
         import ifcopenshell.geom
         import ifcopenshell.util.unit
     except ImportError as exc:raise ValueError('IFC dependencies missing. Install: python -m pip install -r requirements-ifc.txt') from exc
+    for value in (height_min_m,height_max_m):
+        if value is not None and not np.isfinite(value):raise ValueError('IFC height bounds must be finite metres')
+    if height_min_m is not None and height_max_m is not None and height_min_m>height_max_m:raise ValueError('Minimum import height must not exceed maximum height')
     start=time.perf_counter();path=Path(path)
-    if path.stat().st_size>MAX_FILE_BYTES:raise ValueError('IFC upload limit is 100 MiB; use a relevant building subset')
+    if path.stat().st_size>MAX_FILE_BYTES:raise ValueError(f'IFC upload exceeds {MAX_FILE_BYTES//(1024*1024)} MiB; configure LPO_IFC_MAX_UPLOAD_MIB or use a subset')
     with path.open('rb') as stream:header=stream.read(4096).lstrip(b'\xef\xbb\xbf \t\r\n')
     if not header.startswith(b'ISO-10303-21;'):raise ValueError('Cannot parse IFC: expected an ISO-10303-21 STEP header; compressed/XML files are not supported')
     try:model=ifcopenshell.open(str(path))
@@ -55,7 +59,7 @@ def import_ifc(path, filename=None):
     settings.set(settings.USE_WORLD_COORDS,True)
     settings.set(settings.WELD_VERTICES,True)
     # CONVERT_BACK_UNITS deliberately remains false: geometry is already metres.
-    meshes=[];failures=[];skipped=[];timings=[];triangles=0;seen_guids=set()
+    meshes=[];failures=[];skipped=[];timings=[];triangles=0;seen_guids=set();filtered=[];tessellated=0
     for element in model.by_type('IfcElement'):
         if element.is_a('IfcFeatureElementSubtraction'):continue
         guid=element.GlobalId
@@ -73,6 +77,11 @@ def import_ifc(path, filename=None):
             vertices=np.asarray(shape.geometry.verts,float).reshape(-1,3)
             faces=np.asarray(shape.geometry.faces,int).reshape(-1,3)
             if not len(vertices) or not len(faces) or not np.isfinite(vertices).all():raise ValueError('Empty/non-finite triangulated geometry')
+            tessellated+=1
+            zlo=float(vertices[:,2].min());zhi=float(vertices[:,2].max())
+            if (height_min_m is not None and zhi<height_min_m-1e-8) or (height_max_m is not None and zlo>height_max_m+1e-8):
+                filtered.append({'guid':guid,'z_min_m':zlo,'z_max_m':zhi})
+                continue
             # Exact-coordinate welding joins tessellator seam vertices. No near-
             # vertex tolerance weld, hole filling or automatic normal repair.
             vertices,inverse=np.unique(vertices,axis=0,return_inverse=True);faces=inverse[faces]
@@ -92,7 +101,7 @@ def import_ifc(path, filename=None):
         except OverflowError:raise ValueError('IFC preview exceeds 250000 triangles; export a relevant subset')
         except Exception as exc:failures.append({'guid':guid,'ifc_class':element.is_a(),'error':str(exc)[:500]})
         if len(meshes)>1000:raise ValueError('IFC preview exceeds 1000 elements; export a relevant subset')
-    if not meshes:raise ValueError('No renderable IFC element geometry. Check representations and import diagnostics: '+str(failures[:3]))
+    if not meshes:raise ValueError(f'No IFC geometry intersects the selected height range [{height_min_m}, {height_max_m}] metres. {len(filtered)} elements outside range; {len(failures)} failed. Check absolute IFC Z elevations and units. '+str(failures[:3]))
     bounds=np.array([trimesh.Trimesh(m.vertices,m.faces,process=False).bounds for m in meshes])
     lower=bounds[:,0].min(axis=0);upper=bounds[:,1].max(axis=0)
     warnings=['Certificates concern tessellated mesh geometry, not the exact IFC BRep surfaces.','Classification is preliminary: review roofs, equipment and installation surfaces before calculation.','Ground reference defaults to minimum model z; confirm actual terrain/reference elevation.','Open/invalid solids remain visible but block reliable calculation until explicitly excluded or repaired upstream.','Map conversion/CRS metadata is retained; triangulated coordinates are IFC placement coordinates in metres.']
@@ -104,8 +113,12 @@ def import_ifc(path, filename=None):
             maps.append(conversion.get_info(recursive=True))
     # IFC get_info contains only JSON-compatible primitive values when recursive.
     units=[u.get_info(recursive=True) for u in assignments]
-    digest=hashlib.sha256(path.read_bytes()).hexdigest()
-    metadata=IfcMetadata(filename=Path(filename or path.name).name,schema_name=model.schema,source_sha256=digest,length_unit_scale_to_m=scale,source_units=units,map_conversions=maps,bounds_m=[lower.tolist(),upper.tolist()],warnings=warnings,failures=failures,diagnostics={'import_seconds':time.perf_counter()-start,'source_bytes':path.stat().st_size,'elements_loaded':len(meshes),'triangles':triangles,'elements_failed':len(failures),'skipped':skipped,'slowest_elements':sorted(timings,key=lambda x:x['seconds'],reverse=True)[:10],'ifcopenshell_version':ifcopenshell.version,'self_intersections_checked':False,'tessellation_linear_deflection_m':settings.get('mesher-linear-deflection'),'tessellation_angular_deflection_rad':settings.get('mesher-angular-deflection')})
+    hasher=hashlib.sha256()
+    with path.open('rb') as stream:
+        while chunk:=stream.read(1024*1024):hasher.update(chunk)
+    digest=hasher.hexdigest()
+    if height_min_m is not None or height_max_m is not None:warnings.append('Height-filtered subset: intersecting elements are kept whole, not clipped. Outside geometry is omitted; confirm reference elevation and nearby/adjacent obstacles before accepting protection.')
+    metadata=IfcMetadata(height_min_m=height_min_m,height_max_m=height_max_m,filename=Path(filename or path.name).name,schema_name=model.schema,source_sha256=digest,length_unit_scale_to_m=scale,source_units=units,map_conversions=maps,bounds_m=[lower.tolist(),upper.tolist()],warnings=warnings,failures=failures,diagnostics={'import_seconds':time.perf_counter()-start,'source_bytes':path.stat().st_size,'height_filter':{'min_m':height_min_m,'max_m':height_max_m,'coordinate_frame':'IFC world/placement Z in SI metres','selection':'whole elements with intersecting Z bounds'},'elements_filtered_by_height':len(filtered),'filtered_elements':filtered,'elements_tessellated':tessellated,'elements_loaded':len(meshes),'triangles':triangles,'elements_failed':len(failures),'skipped':skipped,'slowest_elements':sorted(timings,key=lambda x:x['seconds'],reverse=True)[:10],'ifcopenshell_version':ifcopenshell.version,'self_intersections_checked':False,'tessellation_linear_deflection_m':settings.get('mesher-linear-deflection'),'tessellation_angular_deflection_rad':settings.get('mesher-angular-deflection')})
     roofs=[m.name for m in meshes if m.import_diagnostics['classification']=='roof']
     # Width/depth are UI metadata only for IFC mode; no synthetic box is added.
     return Project(name=metadata.filename,geometry_source='ifc',ifc_metadata=metadata,meshes=meshes,method='rolling_sphere',objective='manual',candidate_surfaces=roofs,width=min(200,max(.1,float(upper[0]-lower[0]))),depth=min(200,max(.1,float(upper[1]-lower[1]))),roof_height=min(300,max(0,float(upper[2]))),ground_z=float(lower[2]))

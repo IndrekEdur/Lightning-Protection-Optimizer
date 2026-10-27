@@ -23,3 +23,6 @@ Labor, bases, ballast and cabling; background jobs, cancellation and access cont
 Implemented IfcOpenShell STEP import for IFC2x3/IFC4, unit/placement/CRS provenance, geometry/role review, equipment retention, imported world-coordinate viewer and Rolling Sphere connection, mounting projection, private test_models storage, Windows scripts, diagnostics and real-parser synthetic tests. This replaces the earlier statement that IFC loading was absent. IFC export remains unimplemented.
 
 Still pending: validation with actual client IFC building models (none supplied in the execution workspace), execution on the target Windows machine, exporter-specific classification tuning, robust mesh self-intersection validation/repair, large-model asynchronous jobs and performance beyond documented limits. Preserve engineering unknowns rather than certifying incomplete geometry.
+
+
+Delivered height-range import: SI world-Z minimum/maximum, inclusive whole-element selection, same-file reimport, excluded-element diagnostics, failed-import preservation, camera/origin reset, streaming source hash and configurable larger uploads. Future performance work: provably conservative pre-tessellation bounds, background jobs/progress and cancellation. Current filtering still tessellates each represented element before deciding inclusion.

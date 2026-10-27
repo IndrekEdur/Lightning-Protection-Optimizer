@@ -157,3 +157,59 @@ def test_aggregate_roof_children_classified_without_dummy_roof(tmp_path):
     assert not p.ifc_metadata.failures
     assert len(p.meshes)==1 and p.meshes[0].role=='protected'
     assert len(Scene(p,[]).objects)==1
+
+
+@pytest.mark.parametrize('mm',[False,True])
+def test_height_band_filters_in_si_metres_before_preview_limits(tmp_path,monkeypatch,mm):
+    import lpo.ifc_import as importer
+    path=tmp_path/'height.ifc';write_fixture(path,millimetres=mm)
+    monkeypatch.setattr(importer,'MAX_TRIANGLES',12)
+    # Roof occupies 10..10.2, ventilation 10.2..12.2 m. Only the latter overlaps.
+    p=importer.import_ifc(path,height_min_m=11,height_max_m=12)
+    assert len(p.meshes)==1 and p.meshes[0].ifc_class=='IfcBuildingElementProxy'
+    assert p.ifc_metadata.height_min_m==11
+    assert p.ifc_metadata.height_max_m==12
+    assert p.ifc_metadata.diagnostics['elements_filtered_by_height']==1
+    assert p.ifc_metadata.diagnostics['triangles']==12
+    v=np.array(p.meshes[0].vertices)
+    # Full solid survives; not clipped at the requested elevations.
+    assert v[:,2].min()==pytest.approx(10.2)
+    assert v[:,2].max()==pytest.approx(12.2)
+
+
+@pytest.mark.parametrize('lo,hi,count',[(None,10.1,1),(11,None,1),(10.2,10.2,2),(None,None,2)])
+def test_open_and_touching_height_intervals(tmp_path,lo,hi,count):
+    path=tmp_path/'bounds.ifc';write_fixture(path)
+    assert len(import_ifc(path,height_min_m=lo,height_max_m=hi).meshes)==count
+
+
+@pytest.mark.parametrize('lo,hi',[(20,10),(float('nan'),20),(0,float('inf'))])
+def test_invalid_height_ranges_rejected_before_parsing(tmp_path,lo,hi):
+    with pytest.raises(ValueError,match='height|height bounds'):
+        import_ifc(tmp_path/'not-read.ifc',height_min_m=lo,height_max_m=hi)
+
+
+def test_no_height_match_does_not_return_wrong_or_empty_model(tmp_path):
+    path=tmp_path/'empty.ifc';write_fixture(path)
+    with pytest.raises(ValueError,match='No IFC geometry intersects'):
+        import_ifc(path,height_min_m=100,height_max_m=110)
+
+
+def test_http_height_filter_and_validation(tmp_path):
+    path=tmp_path/'http-range.ifc';write_fixture(path,millimetres=True)
+    client=TestClient(app)
+    response=client.post('/api/ifc/import',files={'file':('height.ifc',path.read_bytes())},data={'height_min_m':'11','height_max_m':'12'})
+    assert response.status_code==200,response.text
+    assert len(response.json()['meshes'])==1
+    assert response.json()['ifc_metadata']['height_min_m']==11
+    response=client.post('/api/ifc/import',files={'file':('height.ifc',path.read_bytes())},data={'height_min_m':'20','height_max_m':'10'})
+    assert response.status_code==422
+
+
+def test_height_band_follows_rotated_world_placement(tmp_path):
+    path=tmp_path/'slope-band.ifc';write_fixture(path,slope=.2,equipment=False)
+    p=import_ifc(path,height_min_m=13,height_max_m=14)
+    assert len(p.meshes)==1
+    assert np.ptp(np.array(p.meshes[0].vertices)[:,2])>3
+    # The insertion/base elevation is 10m, but the actual solid reaches the band.
+    assert np.array(p.meshes[0].vertices)[:,2].min()==pytest.approx(10)

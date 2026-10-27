@@ -91,8 +91,37 @@ Synthetic fixture coverage: IFC2x3/IFC4, metre/millimetre/foot units, large offs
 
 ## Performance and remaining work
 
-Preview: 100 MiB uncompressed file, 1000 elements, 250000 triangles; per element 100000 vertices/200000 faces. Engine: 30000 included triangles, bounded certificate nodes/time, 3000 independent targets and 1500 candidate/type combinations. Large files may preview successfully but be unsuitable for engineering verification at these limits. Select/export a relevant source subset; excluded objects no longer participate in collisions. Never call a subset a whole-building check.
+Preview: 512 MiB uncompressed file, 1000 elements, 250000 triangles; per element 100000 vertices/200000 faces. Engine: 30000 included triangles, bounded certificate nodes/time, 3000 independent targets and 1500 candidate/type combinations. Large files may preview successfully but be unsuitable for engineering verification at these limits. Select/export a relevant source subset; excluded objects no longer participate in collisions. Never call a subset a whole-building check.
 
 Native tessellation executes synchronously in a worker thread; job cancellation/background progress and large-model persistent caching remain future work. No general topological repair, automatic roof inference for every exporter, comprehensive self-intersection proof, terrain inference, IFC placement export or exhaustive general exterior-connectivity solver is included. Unrepresented elements and large-model independent verification limits must be resolved before accepting protection.
 
 Real-building validation is still pending: run actual client files from `test_models/`, check source dimensions/elevations against the authoring tool and compare rod/reference cases with an independent engineering calculation. Windows dependency/startup verification must also be performed on the target Windows machine.
+
+
+## Import only a height range
+
+Before choosing an IFC file, enter **Minimum import height · m** and/or **Maximum import height · m** in the IFC panel. Empty fields mean no lower/upper bound. Heights are absolute IFC placement/world Z coordinates in SI metres, even when the source file uses millimetres or feet. They are not storey-relative values or elevations after map conversion.
+
+An element is included when its tessellated world Z bounds intersect the requested band (inclusive). The **entire element** is retained, preserving closed solids, sloping roofs and tall equipment crossing the band. This is not geometric clipping: a tall wall can remain even if most of it is below the selected range. Entering only a minimum is useful for upper roof regions, but can include all higher objects too.
+
+After changing the bounds, click **Import selected file with height range** to re-import without browsing again. The loaded range is recorded beside the loaded model; editing input bounds alone does not change the existing model. Failed imports explicitly keep the prior model. An empty match returns an error rather than replacing the model with an empty or unrelated scene.
+
+Only retained geometry counts toward preview element/triangle limits. Exact selection currently tessellates each represented element before testing its bounds, so this reduces retained geometry and validation work but does not eliminate whole-file parsing/native tessellation time. Elements with unreadable/missing geometry remain failures because their heights cannot safely be inferred. No placement-only shortcut discards rotated/sloping elements.
+
+Uploads now default to 512 MiB. To choose a different local limit, set this environment variable in the backend terminal **before starting the server**:
+
+```powershell
+$env:LPO_IFC_MAX_UPLOAD_MIB = '1024'
+```
+
+Larger IFC files still need sufficient RAM, and selected meshes remain subject to the existing preview/calculation limits. SHA256 hashing now streams the file instead of allocating a second full-file byte buffer.
+
+A height-filtered subset can omit nearby obstacles and lower building geometry relevant to side approaches. Confirm the subset's engineering scope and ground reference explicitly; no height filter establishes whole-building compliance.
+
+CLI equivalent:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\inspect-ifc.py test_models\building.ifc --height-min 18 --height-max 26 --save-project test_models\roof.project.json
+```
+
+Validation of this addition: 75 backend tests pass; frontend production build passes. Tests cover metre/millimetre units, open/equal/inverted bounds, empty selection, sloped world geometry and filtering before retained-mesh budgets. Chromium tests exercise same-file reimport and preservation of the previous model after a failed height selection.
