@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {cleanMountings,nextEquipmentName,apiError} from '../src/projectMaintenance.ts';
+const stale={candidate_surfaces:['Roof','Ventilation 1','Ventilation 2'],equipment:[{name:'Ventilation 2',role:'protected'}]};
+assert.deepEqual(cleanMountings(stale).candidate_surfaces,['Roof','Ventilation 2']);
+assert.deepEqual(stale.candidate_surfaces,['Roof','Ventilation 1','Ventilation 2']);
+assert.equal(nextEquipmentName([{name:'Ventilation 2'}]),'Ventilation 1');
+assert.equal(nextEquipmentName([{name:'Ventilation 1'},{name:'Ventilation 2'}]),'Ventilation 3');
+assert.deepEqual(cleanMountings({...stale,equipment:[{name:'Ventilation 2',role:'excluded'}]}).candidate_surfaces,['Roof']);
+assert.deepEqual(cleanMountings({geometry_source:'ifc',candidate_surfaces:['Roof','IFC roof'],meshes:[{name:'IFC roof',role:'protected'}]}).candidate_surfaces,['IFC roof']);
+assert.equal(apiError([{msg:'Unknown candidate mounting surface',input:{private_geometry:'large'}}]),'Unknown candidate mounting surface');
+console.log('Mounting cleanup, immutable migration, unique names, excluded surfaces and concise validation messages: PASS');
