@@ -92,6 +92,30 @@ class Scene:
             escape=bool((not len(rod_gaps) or np.min(rod_gaps)>=-self.tol) and all(ray_mesh_distance(c,m)>=R-self.tol for _,_,m in self.objects))
         return {'center':c.tolist(),'radius':R,'clearance':clearance,'admissible':admissible,'escape_verified':escape,'escape_method':'exact upward swept-sphere clearance','contacts':contacts}
 
+    def settle(self, xy):
+        """First contact when lowering from above at fixed XY; not a coverage proof.
+
+        The upward swept-sphere clearance predicate is monotone in center Z,
+        unlike point clearance, so bisection cannot skip a thin obstacle.
+        """
+        x,y=map(float,xy)
+        low=self.p.ground_z+self.radius
+        high=self.max_z+self.radius+1.
+        def clear(z):
+            c=np.array([x,y,z])
+            return (not len(self.a) or np.min(ray_segment_distances(c,self.a,self.b))>=self.radius) and all(ray_mesh_distance(c,m)>=self.radius for _,_,m in self.objects)
+        if not clear(low):
+            for _ in range(64):
+                if high-low<=min(self.tol/4,1e-6):break
+                mid=(low+high)/2
+                if clear(mid):high=mid
+                else:low=mid
+            z=high
+        else:z=low
+        result=self.inspect([x,y,z])
+        result['placement_method']='first contact on vertical descent at fixed XY'
+        return result
+
     def targets(self,refine=1):
         result=[('Roof',np.array([x,y,self.p.roof_height])) for x,y in samples(self.p,refine)] if self.p.geometry_source=='parametric' else []
         for name,role,m in (self.objects[1:] if self.p.geometry_source=='parametric' else self.objects):

@@ -29,3 +29,6 @@ Delivered height-range import: SI world-Z minimum/maximum, inclusive whole-eleme
 
 
 Delivered federated IFC import: multiple-file or incremental additions; source-specific units, height filters and diagnostics; explicit source replacement/removal; source-scoped GUIDs and omission acknowledgments; combined geometry calculations; atomic import batches; per-file reports and project persistence. Survey/CRS alignment remains explicit upstream work, not automatic federation. Combined model/calculation limits remain unchanged.
+
+
+Sphere inspection supports fixed-XY vertical descent to first contact with rod segments, building triangles or reference ground. The monotone upward swept-sphere distance predicate is bisected to at most min(tolerance/4, 1e-6 m). Choose a rod pair to inspect at its horizontal midpoint; other geometry can intercept first, and unequal tip heights need not give simultaneous contact. The sphere is hidden initially. Inspection is separate from whole-model protection verification.

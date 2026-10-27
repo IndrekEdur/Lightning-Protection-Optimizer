@@ -125,3 +125,6 @@ Rolling-sphere consistency correction: independently detected contacts are fed b
 Recorded reference: direct repair raises three rods and adds one, producing 7 rods costing 1100 with both roof and equipment verified. A subsequent bounded cost search has found a verified 9 x 2.5 m configuration costing 900. These are found configurations, not a global cost-optimality claim. Re-running an already verified placement need not add more rods.
 
 The checked manual reference placement is available in `examples/roof-equipment-verified.json` (9 type-A rods, catalogue cost 900). Open it with Open project and recalculate; use cost objective to search again. It is a verified geometry reference, not a global optimum claim. Final regression run: 87 tests passed; TypeScript/Vite build passed.
+
+
+Sphere inspection supports fixed-XY vertical descent to first contact with rod segments, building triangles or reference ground. The monotone upward swept-sphere distance predicate is bisected to at most min(tolerance/4, 1e-6 m). Choose a rod pair to inspect at its horizontal midpoint; other geometry can intercept first, and unequal tip heights need not give simultaneous contact. The sphere is hidden initially. Inspection is separate from whole-model protection verification.

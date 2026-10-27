@@ -150,3 +150,22 @@ def test_sloped_mesh_and_roles():
     assert scene.contact(q)['status']=='unprotected'
     obj.role='excluded'
     assert len(Scene(project(meshes=[obj]),[]).objects)==1
+
+
+def test_vertical_settle_stops_at_both_rod_tips():
+    p=project(rods=[Rod(x=0,y=10,type_index=0),Rod(x=20,y=10,type_index=0)])
+    result=Scene(p,p.rods).settle([10,10])
+    assert result['center'][2]==pytest.approx(12.5+np.sqrt(45**2-100),abs=1e-6)
+    assert result['admissible'] and result['escape_verified']
+    assert {c['object'] for c in result['contacts']}=={'Rod 1','Rod 2'}
+
+
+def test_vertical_settle_building_and_api():
+    p=project(equipment=[Equipment(name='Unit',x=8,y=8,z=10,width=4,depth=4,height=6)])
+    result=Scene(p,[]).settle([10,10])
+    assert result['center'][2]==pytest.approx(61,abs=1e-6)
+    assert result['admissible']
+    assert 'Unit' in {c['object'] for c in result['contacts']}
+    response=TestClient(app).post('/api/sphere/settle',json={**p.model_dump(),'center':[10,10,0]})
+    assert response.status_code==200
+    assert response.json()['center'][2]==pytest.approx(61,abs=1e-6)
