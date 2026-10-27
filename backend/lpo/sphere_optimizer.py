@@ -32,6 +32,15 @@ def verify_complete(p,rods,seconds=12,depth=7):
         if contacts or independent['status']=='invalid_model':
             result['status']='unprotected' if contacts else 'invalid_model';result['surface_certified']=False
             result['points'].extend(contacts)
+            result.setdefault('counterexamples',[]).extend(contacts)
+            affected={pt['object'] for pt in contacts}
+            for name in affected:result.setdefault('object_status',{})[name]='unprotected'
+            # A contradictory independent witness invalidates the affected
+            # object's patch certificates, not only the top-level boolean.
+            for patch in result.get('patches',[]):
+                if patch['object'] in affected and patch['status']=='protected':patch['status']='undetermined'
+            import trimesh
+            result['verified_surface_area_m2']=sum(float(trimesh.triangles.area(np.array([patch['vertices']]))[0]) for patch in result.get('patches',[]) if patch['kind']=='face_interior' and patch['status']=='protected')
             if independent['status']=='invalid_model':result['error']=independent.get('error','Independent geometry check failed')
     if p.geometry_source=='ifc' and result['status']=='protected' and not (p.reference_surface_confirmed and p.ifc_review_confirmed):
         result['status']='undetermined';result['surface_certified']=False
@@ -91,7 +100,9 @@ def solve_sphere(p, _refined=False):
         seen.add(key)
         initial=certificate(Scene(p,proposed),seconds=1,max_depth=7,max_nodes=10000)
         if initial['surface_certified']:
-            best=proposed;best_verification=initial;break
+            independent=verify_complete(p,proposed,seconds=5)
+            if independent['surface_certified']:
+                best=proposed;best_verification=independent;break
     if best is None:
         initial=verify_complete(p,seed,seconds=5)
         if initial['surface_certified']:best=seed;best_verification=initial
@@ -137,6 +148,7 @@ def solve_sphere(p, _refined=False):
     # Independent final geometry verification is mandatory; do not return a
     # cached incumbent as verified after any last change.
     verification=verify_complete(p,rods,seconds=20,depth=8)
+    if not verification.get('surface_certified') and status=='certified_candidate_solution':status='final_verification_failed'
     result=package(p,rods,verification,status,start,iterations,gap)
     result['objective_lower_bound_on_witness_model']=lower_bound
     if p.geometry_source=='ifc':result['checks'].append('Imported IFC: confirm units, ground/reference elevation, element classification, omitted elements and mesh self-intersections; map conversion is metadata only.')
@@ -154,7 +166,7 @@ def package(p,rods,verification,status,start,iterations,gap):
     points=verification['points'];certified=verification.get('surface_certified',False)
     placement=[{**r.model_dump(),'base_z':p.roof_height if r.base_z is None else r.base_z,'height':p.catalogue[r.type_index].height,'price':p.catalogue[r.type_index].price} for r in rods]
     return {'rods':[r.model_dump() for r in rods],'rod_schedule':placement,'counts':{t.name:sum(r.type_index==i for r in rods) for i,t in enumerate(p.catalogue)},'total_cost':sum(p.catalogue[r.type_index].price for r in rods),
-        'solver_status':status,'mip_gap':gap,'engineering_verified':False,'geometry_verified':certified,'verification_status':verification['status'],'verification':verification,
+        'solution_status':('verified_solution' if certified else 'no_verified_feasible_solution') if p.objective!='manual' else ('manual_verified' if certified else 'manual_unverified'),'solver_status':status,'mip_gap':gap,'engineering_verified':False,'geometry_verified':certified,'verification_status':verification['status'],'verification':verification,
         'method':'rolling_sphere','lps':p.lps,'radius':SPHERE_RADII[p.lps],'duration_seconds':time.perf_counter()-start,'optimization_method':'witness-cut MILP + continuous surface certificate + independent point/direction check','cut_iterations':iterations,
         'best_verified_feasible':{'rods':placement,'total_cost':sum(p.catalogue[r.type_index].price for r in rods),'scope':'Static sphere-contact exclusion on the modeled required surfaces within stated tolerances'} if certified else None,
         'protected_samples':sum(pt['status']=='protected' for pt in points),'unprotected_samples':sum(pt['status']=='unprotected' for pt in points),'undetermined_samples':sum(pt['status']=='undetermined' for pt in points),'samples':[],

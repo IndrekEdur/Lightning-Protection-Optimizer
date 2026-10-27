@@ -74,17 +74,17 @@ class Scene:
     def inspect(self,center):
         c=np.asarray(center,float);R=self.radius
         contacts=[];clearance=float(c[2]-self.p.ground_z-R)
-        if abs(clearance)<=self.tol:contacts.append({'object':'Ground','point':[float(c[0]),float(c[1]),self.p.ground_z]})
+        if clearance<=self.tol:contacts.append({'object':'Ground','point':[float(c[0]),float(c[1]),self.p.ground_z],'clearance':clearance,'relation':'penetration' if clearance < -self.tol else 'tangent'})
         for (name,role,_),collider in zip(self.objects,self.colliders):
             gap,point=collider.clearance(c,R)
             clearance=min(clearance,gap)
-            if gap<=self.tol: contacts.append({'object':name,'role':role,'point':point,'clearance':gap})
+            if gap<=self.tol: contacts.append({'object':name,'role':role,'point':point,'clearance':gap,'relation':'penetration' if gap < -self.tol else 'tangent'})
         d=segment_distances([c],self.a,self.b)[0]-R
         if len(d):
             clearance=min(clearance,float(d.min()))
             for i in np.where(d<=self.tol)[0]:
                 v=self.b[i]-self.a[i];t=np.clip(np.dot(c-self.a[i],v)/np.dot(v,v),0,1)
-                contacts.append({'object':f'Rod {i+1}','role':'air_terminal','point':(self.a[i]+t*v).tolist(),'clearance':float(d[i])})
+                contacts.append({'object':f'Rod {i+1}','role':'air_terminal','point':(self.a[i]+t*v).tolist(),'clearance':float(d[i]),'relation':'penetration' if d[i] < -self.tol else 'tangent'})
         admissible=clearance>=-self.tol
         escape=admissible and bool(c[2]>=self.max_z-self.tol)
         if admissible and not escape:

@@ -124,3 +124,26 @@ def test_ventilation_remains_exposed_while_roof_is_protected():
     r=certificate(Scene(p,rods),seconds=5)
     assert r['status']=='unprotected'
     assert r['object_status']['Vent']=='unprotected'
+
+
+def test_independent_contact_invalidates_object_patches_and_feeds_optimizer(monkeypatch):
+    import lpo.sphere_optimizer as engine
+    p=Project(width=2,depth=2)
+    witness={'object':'Roof','point':[0,0,10],'status':'unprotected','witness':{'center':[0,0,55],'admissible':True},'directions_tested':1}
+    proof={'status':'protected','surface_certified':True,'object_status':{'Roof':'protected'},'verified_surface_area_m2':2.,'patches':[{'object':'Roof','vertices':[[0,0,10],[2,0,10],[0,2,10]],'status':'protected','kind':'face_interior'}],'points':[],'counterexamples':[]}
+    monkeypatch.setattr(engine,'certificate',lambda *a,**kw:proof)
+    monkeypatch.setattr(engine,'verify_scene',lambda *a,**kw:{'status':'unprotected','points':[witness]})
+    result=engine.verify_complete(p,[])
+    assert result['status']=='unprotected' and not result['surface_certified']
+    assert result['object_status']['Roof']=='unprotected'
+    assert result['patches'][0]['status']=='undetermined'
+    assert result['verified_surface_area_m2']==0
+    assert result['counterexamples']==[witness]
+
+
+def test_inspection_penetration_is_not_tangency():
+    p=Project(width=30,depth=40,equipment=[Equipment()])
+    result=Scene(p,[]).inspect([15,20,55])
+    assert not result['admissible']
+    assert any(c['object']=='Ventilation' and c['relation']=='penetration' for c in result['contacts'])
+    assert any(c['object']=='Roof' and c['relation']=='tangent' for c in result['contacts'])
