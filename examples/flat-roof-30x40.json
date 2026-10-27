@@ -1,0 +1,29 @@
+{
+  "name": "30 × 40 m demonstration",
+  "width": 30.0,
+  "depth": 40.0,
+  "roof_height": 10.0,
+  "spacing": 5.0,
+  "sample_spacing": 2.5,
+  "lps": "III",
+  "edition": "IEC 62305-3:2024 (normative data not loaded)",
+  "method": "demo_angle",
+  "demo_angle_deg": 60.0,
+  "objective": "cost",
+  "catalogue": [
+    {
+      "name": "A",
+      "height": 2.5,
+      "price": 100.0
+    },
+    {
+      "name": "B",
+      "height": 5.0,
+      "price": 180.0
+    }
+  ],
+  "protected": [],
+  "permitted": [],
+  "prohibited": [],
+  "rods": []
+}
