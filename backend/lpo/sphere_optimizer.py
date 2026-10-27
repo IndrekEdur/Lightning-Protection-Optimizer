@@ -51,10 +51,93 @@ def verify_complete(p,rods,seconds=12,depth=7):
 def cost(p,rods):return sum(p.catalogue[r.type_index].price for r in rods) if p.objective!='count' else len(rods)
 
 
+def rod_key(p,rod):
+    return (round(rod.x,9),round(rod.y,9),round(p.roof_height if rod.base_z is None else rod.base_z,9))
+
+
+def repair_configuration(p,options,initial,seconds=22):
+    """Monotone witness-guided additions/upgrades; every accepted outcome is verified.
+
+    This is a feasibility repair, not a cost optimality proof. Original off-grid
+    mountings may be retained; newly added rods come from the candidate set.
+    """
+    start=time.perf_counter();scene=Scene(p,[]);selected={};steps=[]
+    for rod in initial:
+        a,b=rods_segments(p,[rod])
+        try:scene.check_mounting(a[0],b[0])
+        except ValueError:continue
+        key=rod_key(p,rod)
+        if key not in selected or p.catalogue[rod.type_index].height>p.catalogue[selected[key].type_index].height:selected[key]=rod
+    starts,ends=rods_segments(p,options)
+    verification=None
+    for iteration in range(24):
+        verification=verify_complete(p,list(selected.values()),seconds=5,depth=8)
+        if verification.get('surface_certified'):return list(selected.values()),verification,steps
+        if verification['status']=='invalid_model' or time.perf_counter()-start>seconds:break
+        # Both primary and independent contacts must drive the next action.
+        contacts=verification.get('counterexamples',[])+verification.get('points',[])
+        centers=list(dict.fromkeys(tuple(pt['witness']['center']) for pt in contacts if pt.get('witness')))
+        guidance='detected_contacts'
+        threshold=scene.radius-p.sphere_tolerance-1e-9
+        if not centers:
+            # A patch may remain unresolved although its sampled centers are
+            # already blocked. Add conservative clearance margin instead of
+            # abandoning this almost-protected arrangement. These are search
+            # probes ONLY, not admissible witnesses or necessary MILP cuts.
+            guidance='unresolved_patch_margin';threshold=scene.radius-p.sphere_tolerance-.1
+            probes=[]
+            for patch in verification.get('patches',[]):
+                if patch['status']!='undetermined':continue
+                vertices=np.array(patch['vertices'],float);q=vertices.mean(axis=0)
+                if len(vertices)==3:
+                    normal=np.cross(vertices[1]-vertices[0],vertices[2]-vertices[0]);length=np.linalg.norm(normal)
+                    if length<1e-12:continue
+                    normal/=length
+                else:normal=np.array([0.,0.,1.])
+                probes.append(q+scene.radius*normal)
+            if probes:
+                old_a,old_b=rods_segments(p,list(selected.values()))
+                distances=segment_distances(probes,old_a,old_b)
+                centers=[tuple(q) for i,q in enumerate(probes) if not len(old_a) or distances[i].min()>=threshold]
+        if not centers:
+            # Edge/corner proof can remain unresolved even when all upward
+            # probes have clearance. Place a candidate near that unresolved
+            # feature, then re-run the full directional proof.
+            targets=[np.array(patch['vertices'],float).mean(axis=0) for patch in verification.get('patches',[]) if patch['status']=='undetermined']
+            if not targets:break
+            proximity=np.linalg.norm(starts[:,None,:]-np.array(targets)[None,:,:],axis=2).min(axis=1)
+            nearby=[]
+            for index,rod in enumerate(options):
+                old=selected.get(rod_key(p,rod))
+                if old is not None and p.catalogue[rod.type_index].height<=p.catalogue[old.type_index].height:continue
+                delta=(p.catalogue[rod.type_index].price-(p.catalogue[old.type_index].price if old else 0)) if p.objective!='count' else (0 if old else 1)
+                nearby.append((float(proximity[index]),delta,index))
+            if not nearby:break
+            _,delta,index=min(nearby);rod=options[index];key=rod_key(p,rod);old=selected.get(key)
+            selected[key]=rod
+            steps.append({'action':'upgrade' if old else 'add','rod':rod.model_dump(),'height':p.catalogue[rod.type_index].height,'guidance':'unresolved_feature_neighbourhood','objective_increment':float(delta)})
+            continue
+        blocking=segment_distances(centers,starts,ends)<threshold
+        choices=[]
+        for index,rod in enumerate(options):
+            key=rod_key(p,rod);old=selected.get(key)
+            if old is not None and p.catalogue[rod.type_index].height<=p.catalogue[old.type_index].height:continue
+            gain=int(blocking[:,index].sum())
+            if not gain:continue
+            delta=(p.catalogue[rod.type_index].price-(p.catalogue[old.type_index].price if old else 0)) if p.objective!='count' else (0 if old else 1)
+            choices.append((max(delta,1e-6)/gain,delta,-gain,index))
+        if not choices:break
+        _,delta,negative_gain,index=min(choices)
+        rod=options[index];key=rod_key(p,rod);old=selected.get(key)
+        selected[key]=rod
+        steps.append({'action':'upgrade' if old else 'add','rod':rod.model_dump(),'height':p.catalogue[rod.type_index].height,'guidance':guidance,'target_centers_blocked':-negative_gain,'objective_increment':float(delta)})
+    return list(selected.values()),verification,steps
+
+
 def solve_sphere(p, _refined=False):
     start=time.perf_counter();iterations=0;gap=None;best=None;best_verification=None
     rods=p.rods if p.objective=='manual' else []
-    status='manual';notes=[];cuts=[];lower_bound=None
+    status='manual';notes=[];cuts=[];lower_bound=None;repair_steps=[]
     try:Scene(p,rods)
     except ValueError as exc:return package(p,rods,{'status':'invalid_model','error':str(exc),'points':[],'patches':[],'surface_certified':False},'invalid_model',start,0,None)
     if p.objective=='manual':
@@ -83,6 +166,13 @@ def solve_sphere(p, _refined=False):
     seed=[]
     for key in keys:
         seed.append(max((r for r in options if (r.x,r.y,r.base_z)==key),key=lambda r:p.catalogue[r.type_index].height))
+    # Repair an existing configuration first rather than discarding the user's
+    # failed candidate and rediscovering it from an empty arrangement.
+    if p.rods:
+        repaired,checked,repair_steps=repair_configuration(p,options,p.rods)
+        if checked and checked.get('surface_certified'):
+            best=repaired;best_verification=checked
+            notes.append(f'Existing placement repaired and verified with {len(repair_steps)} additions/upgrades before cost search.')
     proposals=[seed]
     xs=sorted(set(r.x for r in options));ys=sorted(set(r.y for r in options))
     for sx in range(1,min(8,len(xs))+1):
@@ -93,8 +183,10 @@ def solve_sphere(p, _refined=False):
                 if subset:proposals.append(subset)
     proposals.sort(key=lambda rs:cost(p,rs))
     seen=set()
+    seed_search_start=time.perf_counter()
     for proposed in proposals:
-        if time.perf_counter()-start>12:break
+        if time.perf_counter()-start>45 or time.perf_counter()-seed_search_start>12:break
+        if best is not None and cost(p,proposed)>=cost(p,best):continue
         key=tuple((r.x,r.y,r.base_z,r.type_index) for r in proposed)
         if key in seen:continue
         seen.add(key)
@@ -152,6 +244,7 @@ def solve_sphere(p, _refined=False):
     result=package(p,rods,verification,status,start,iterations,gap)
     result['objective_lower_bound_on_witness_model']=lower_bound
     if p.geometry_source=='ifc':result['checks'].append('Imported IFC: confirm units, ground/reference elevation, element classification, omitted elements and mesh self-intersections; map conversion is metadata only.')
+    result['repair_steps']=repair_steps
     result['candidate_count']=len(keys);result['checks'].extend(notes)
     if best is None and not _refined and p.spacing>1 and len(options)<350 and time.perf_counter()-start<40:
         finer=p.model_copy(update={'spacing':max(1,p.spacing/2)})
@@ -165,7 +258,9 @@ def solve_sphere(p, _refined=False):
 def package(p,rods,verification,status,start,iterations,gap):
     points=verification['points'];certified=verification.get('surface_certified',False)
     placement=[{**r.model_dump(),'base_z':p.roof_height if r.base_z is None else r.base_z,'height':p.catalogue[r.type_index].height,'price':p.catalogue[r.type_index].price} for r in rods]
-    return {'rods':[r.model_dump() for r in rods],'rod_schedule':placement,'counts':{t.name:sum(r.type_index==i for r in rods) for i,t in enumerate(p.catalogue)},'total_cost':sum(p.catalogue[r.type_index].price for r in rods),
+    old={rod_key(p,r):r for r in p.rods};new={rod_key(p,r):r for r in rods}
+    changes={'added':len(new.keys()-old.keys()),'removed':len(old.keys()-new.keys()),'height_changed':sum(old[key].type_index!=new[key].type_index for key in old.keys()&new.keys())}
+    return {'placement_changes':changes,'rods':[r.model_dump() for r in rods],'rod_schedule':placement,'counts':{t.name:sum(r.type_index==i for r in rods) for i,t in enumerate(p.catalogue)},'total_cost':sum(p.catalogue[r.type_index].price for r in rods),
         'solution_status':('verified_solution' if certified else 'no_verified_feasible_solution') if p.objective!='manual' else ('manual_verified' if certified else 'manual_unverified'),'solver_status':status,'mip_gap':gap,'engineering_verified':False,'geometry_verified':certified,'verification_status':verification['status'],'verification':verification,
         'method':'rolling_sphere','lps':p.lps,'radius':SPHERE_RADII[p.lps],'duration_seconds':time.perf_counter()-start,'optimization_method':'witness-cut MILP + continuous surface certificate + independent point/direction check','cut_iterations':iterations,
         'best_verified_feasible':{'rods':placement,'total_cost':sum(p.catalogue[r.type_index].price for r in rods),'scope':'Static sphere-contact exclusion on the modeled required surfaces within stated tolerances'} if certified else None,

@@ -1,0 +1,112 @@
+{
+  "geometry_source": "parametric",
+  "ifc_metadata": null,
+  "ifc_sources": [],
+  "reference_surface_confirmed": false,
+  "ifc_review_confirmed": false,
+  "acknowledged_ifc_omissions": [],
+  "units": "m",
+  "meshes": [],
+  "equipment": [
+    {
+      "name": "Ventilation 1",
+      "x": 10.0,
+      "y": 10.0,
+      "z": 10.0,
+      "width": 3.0,
+      "depth": 3.0,
+      "height": 2.0,
+      "role": "protected"
+    }
+  ],
+  "min_mount_normal_z": 0.5,
+  "candidate_surfaces": [
+    "Roof",
+    "Ventilation 1"
+  ],
+  "ground_z": 0.0,
+  "sphere_tolerance": 0.001,
+  "sphere_refinement": 2,
+  "name": "30 × 40 m demonstration",
+  "width": 30.0,
+  "depth": 40.0,
+  "roof_height": 10.0,
+  "spacing": 5.0,
+  "sample_spacing": 2.5,
+  "lps": "III",
+  "edition": "IEC 62305-3:2024 (normative data not loaded)",
+  "method": "rolling_sphere",
+  "demo_angle_deg": 60.0,
+  "objective": "manual",
+  "catalogue": [
+    {
+      "name": "A",
+      "height": 2.5,
+      "price": 100.0
+    },
+    {
+      "name": "B",
+      "height": 5.0,
+      "price": 180.0
+    }
+  ],
+  "protected": [],
+  "permitted": [],
+  "prohibited": [],
+  "rods": [
+    {
+      "base_z": 10.0,
+      "x": 0.0,
+      "y": 0.0,
+      "type_index": 0
+    },
+    {
+      "base_z": 10.0,
+      "x": 25.0,
+      "y": 0.0,
+      "type_index": 0
+    },
+    {
+      "base_z": 10.0,
+      "x": 30.0,
+      "y": 0.0,
+      "type_index": 0
+    },
+    {
+      "base_z": 10.0,
+      "x": 0.0,
+      "y": 25.0,
+      "type_index": 0
+    },
+    {
+      "base_z": 10.0,
+      "x": 30.0,
+      "y": 25.0,
+      "type_index": 0
+    },
+    {
+      "base_z": 10.0,
+      "x": 0.0,
+      "y": 40.0,
+      "type_index": 0
+    },
+    {
+      "base_z": 10.0,
+      "x": 25.0,
+      "y": 40.0,
+      "type_index": 0
+    },
+    {
+      "base_z": 10.0,
+      "x": 30.0,
+      "y": 40.0,
+      "type_index": 0
+    },
+    {
+      "base_z": 12.0,
+      "x": 13.0,
+      "y": 13.0,
+      "type_index": 0
+    }
+  ]
+}
